@@ -1,4 +1,6 @@
-import { Atom, WritableAtom, createDerivedAtom } from './store';
+import { createDerivedAtom } from './atoms';
+import { WritableAtom, Atom } from './store';
+
 
 export type Action<T extends string = string, P = void> = P extends void
   ? { type: T }
@@ -14,21 +16,23 @@ export function createReducerAtom<S, A extends Action = Action>(
   initialState: S,
   reducer: Reducer<S, A>,
   debugLabel?: string
-): [WritableAtom<S, A>, (action: A) => void] {
-  const atom = createDerivedAtom({
-    read: (get) => initialState,
-    write: (get, set, action: A) => {
+): [WritableAtom<S>, (action: A) => void] {
+  const atom = createDerivedAtom<S>({
+    read: () => initialState,
+    write: (get, set, update: A | S) => {
       const currentState = get(atom);
-      const nextState = reducer(currentState, action);
-      set(atom, nextState);
+      if (update instanceof Object && 'type' in update) {
+        const nextState = reducer(currentState, update as A);
+        set(atom, nextState);
+      } else {
+        set(atom, update as S);
+      }
     },
     debugLabel,
-  }) as WritableAtom<S, A>;
+  });
 
-  const dispatch = (action: A) => {
-    const currentState = atom.read((a) => a);
-    const nextState = reducer(currentState, action);
-    atom.write(() => {}, () => {}, action);
+  const dispatch = (action: A): void => {
+    atom.set((prev: S) => reducer(prev, action));
   };
 
   return [atom, dispatch];
@@ -39,32 +43,34 @@ export function createSelector<S, R>(
   selector: (state: S) => R,
   debugLabel?: string
 ): Atom<R> {
-  return createDerivedAtom({
+  return createDerivedAtom<R>({
     read: (get) => selector(get(atom)),
     debugLabel,
   });
 }
 
+export type AsyncActionCreator<T extends string, P, R> = ActionCreator<T, P> & {
+  success: ActionCreator<`${T}_SUCCESS`, R>;
+  error: ActionCreator<`${T}_ERROR`, Error>;
+};
+
 export function createAsyncAction<T extends string, P, R>(
-  type: T,
-  asyncFn: (payload: P) => Promise<R>
-): ActionCreator<T, P> & { success: ActionCreator<`${T}_SUCCESS`, R>; error: ActionCreator<`${T}_ERROR`, Error> } {
+  type: T
+): AsyncActionCreator<T, P, R> {
   const actionCreator = ((payload: P) => ({ type, payload })) as ActionCreator<T, P>;
-  actionCreator.success = ((payload: R) => ({ type: `${type}_SUCCESS` as const, payload })) as ActionCreator<
-    `${T}_SUCCESS`,
-    R
-  >;
-  actionCreator.error = ((payload: Error) => ({ type: `${type}_ERROR` as const, payload })) as ActionCreator<
-    `${T}_ERROR`,
-    Error
-  >;
-  return actionCreator;
+  const success = ((payload: R) => ({ type: `${type}_SUCCESS` as const, payload })) as ActionCreator<`${T}_SUCCESS`, R>;
+  const error = ((payload: Error) => ({ type: `${type}_ERROR` as const, payload })) as ActionCreator<`${T}_ERROR`, Error>;
+  
+  return Object.assign(actionCreator, { success, error });
 }
 
 export function createActionCreator<T extends string>(type: T): ActionCreator<T>;
 export function createActionCreator<T extends string, P>(type: T): ActionCreator<T, P>;
-export function createActionCreator<T extends string, P = void>(type: T): ActionCreator<T, P> {
-  return ((payload?: P) => (payload === undefined ? { type } : { type, payload })) as ActionCreator<T, P>;
+export function createActionCreator<T extends string, P = void>(
+  type: T
+): ActionCreator<T, P> {
+  return ((payload?: P) =>
+    payload === undefined ? { type } : { type, payload }) as ActionCreator<T, P>;
 }
 
 export type AsyncState<T> = {
@@ -83,26 +89,22 @@ export function createAsyncAtom<T>(
     error: null,
   };
 
-  const [atom, dispatch] = createReducerAtom<AsyncState<T>, any>(initialState, (state, action) => {
-    switch (action.type) {
-      case 'FETCH_START':
-        return { ...state, loading: true, error: null };
-      case 'FETCH_SUCCESS':
-        return { data: action.payload, loading: false, error: null };
-      case 'FETCH_ERROR':
-        return { ...state, loading: false, error: action.payload };
-      default:
-        return state;
-    }
-  }, debugLabel);
+  const atom = createDerivedAtom<AsyncState<T>>({
+    read: () => initialState,
+    write: (get, set, state: AsyncState<T>) => {
+      set(atom, state);
+    },
+    debugLabel,
+  });
 
-  const fetch = async () => {
-    dispatch({ type: 'FETCH_START' });
+  const fetch = async (): Promise<void> => {
     try {
+      atom.set({ ...initialState, loading: true });
       const data = await asyncFn();
-      dispatch({ type: 'FETCH_SUCCESS', payload: data });
+      atom.set({ data, loading: false, error: null });
     } catch (error) {
-      dispatch({ type: 'FETCH_ERROR', payload: error instanceof Error ? error : new Error(String(error)) });
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      atom.set({ data: null, loading: false, error: errorObj });
     }
   };
 

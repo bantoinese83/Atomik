@@ -15,7 +15,7 @@ class PerformanceMonitor {
   private updateThreshold = 16; // 60fps threshold in ms
   private warningThreshold = 5; // Number of slow updates before warning
 
-  private getOrCreateMetrics(atom: Atom<any>): PerformanceMetrics {
+  private getOrCreateMetrics(atom: Atom<unknown>): PerformanceMetrics {
     let metrics = this.metrics.get(atom.key);
     if (!metrics) {
       metrics = {
@@ -31,12 +31,12 @@ class PerformanceMonitor {
     return metrics;
   }
 
-  public trackRead(atom: Atom<any>) {
+  public trackRead(atom: Atom<unknown>) {
     const metrics = this.getOrCreateMetrics(atom);
     metrics.reads++;
   }
 
-  public trackWrite(atom: Atom<any>, duration: number) {
+  public trackWrite(atom: Atom<unknown>, duration: number) {
     const metrics = this.getOrCreateMetrics(atom);
     metrics.writes++;
     metrics.updateTime = duration;
@@ -54,16 +54,16 @@ class PerformanceMonitor {
     }
   }
 
-  public trackSubscriber(atom: Atom<any>, count: number) {
+  public trackSubscriber(atom: Atom<unknown>, count: number) {
     const metrics = this.getOrCreateMetrics(atom);
     metrics.subscribers = count;
   }
 
-  public getMetrics(atom: Atom<any>): PerformanceMetrics {
+  public getMetrics(atom: Atom<unknown>): PerformanceMetrics {
     return this.getOrCreateMetrics(atom);
   }
 
-  public resetMetrics(atom: Atom<any>) {
+  public resetMetrics(atom: Atom<unknown>) {
     this.metrics.delete(atom.key);
   }
 
@@ -93,17 +93,17 @@ export const performanceMiddleware = (): AtomMiddleware => ({
 });
 
 // Utility hook for debugging performance
-export function getAtomMetrics(atom: Atom<any>): PerformanceMetrics {
+export function getAtomMetrics(atom: Atom<unknown>): PerformanceMetrics {
   return monitor.getMetrics(atom);
 }
 
 // Reset metrics for testing/debugging
-export function resetMetrics(atom?: Atom<any>) {
+export function resetMetrics(atom?: Atom<unknown>) {
   if (atom) {
     monitor.resetMetrics(atom);
   } else {
     monitor.getAllMetrics().forEach((_, key) => {
-      monitor.resetMetrics({ key } as Atom<any>);
+      monitor.resetMetrics({ key } as Atom<unknown>);
     });
   }
 } 

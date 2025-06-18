@@ -1,43 +1,48 @@
-import { Atom, WritableAtom } from './store';
+import { Atom } from "./store";
 
 export interface AtomMiddleware {
-  onRead?: (atom: Atom<any>, value: any) => any;
-  onWrite?: (atom: Atom<any>, value: any, next: (value: any) => void) => void;
-  onSubscribe?: (atom: Atom<any>, callback: () => void) => () => void;
+  onRead?: <T>(atom: Atom<T>, value: T) => T;
+  onWrite?: <T>(atom: Atom<T>, value: T, next: (value: T) => void) => void;
+  onSubscribe?: <T>(atom: Atom<T>, callback: () => void) => () => void;
 }
 
 // Redux-like middleware signature
-export type ReduxMiddleware = (store: any) => (next: any) => (action: any) => any;
+export type ReduxMiddleware<S = unknown, A = { type: string; payload?: unknown }> = 
+  (store: { getState: () => S; dispatch: (action: A) => A }) => 
+  (next: (action: A) => A) => 
+  (action: A) => A;
 
 // Adapter to convert Redux middleware to Atomik middleware
-export function adaptReduxMiddleware(reduxMiddleware: ReduxMiddleware): AtomMiddleware {
+export function adaptReduxMiddleware<S = unknown, A = { type: string; payload?: unknown }>(
+  reduxMiddleware: ReduxMiddleware<S, A>
+): AtomMiddleware {
   const store = {
-    getState: () => ({}),
-    dispatch: (action: any) => action,
+    getState: () => ({} as S),
+    dispatch: (action: A) => action,
   };
   
   const middleware = reduxMiddleware(store);
   
   return {
-    onWrite: (atom, value, next) => {
+    onWrite: <T>(atom: Atom<T>, value: T, next: (value: T) => void) => {
       const action = {
         type: `${atom.debugLabel || String(atom.key)}/update`,
         payload: value,
-      };
+      } as A;
       
-      const result = middleware((v: any) => {
-        next(v.payload);
+      const result = middleware((v: A) => {
+        next((v as unknown as { payload: T }).payload);
         return v;
       })(action);
       
-      return result.payload;
+      return (result as unknown as { payload: T }).payload;
     },
   };
 }
 
 // Logger middleware (similar to redux-logger)
 export const logger: AtomMiddleware = {
-  onWrite: (atom, value, next) => {
+  onWrite: <T>(atom: Atom<T>, value: T, next: (value: T) => void) => {
     const label = atom.debugLabel || String(atom.key);
     console.group(`Atom Update: ${label}`);
     console.log('Previous:', atom);
@@ -54,9 +59,9 @@ export interface DevToolsConfig {
   maxAge?: number;
 }
 
-export const devTools = (config?: DevToolsConfig): AtomMiddleware => {
+export const devTools = (): AtomMiddleware => {
   return {
-    onWrite: (atom, value, next) => {
+    onWrite: <T>(atom: Atom<T>, value: T, next: (value: T) => void) => {
       // Implementation moved to devtools.ts
       next(value);
     },
@@ -67,8 +72,8 @@ export const devTools = (config?: DevToolsConfig): AtomMiddleware => {
 interface PersistConfig {
   key: string;
   storage?: Storage;
-  serialize?: (value: any) => string;
-  deserialize?: (value: string) => any;
+  serialize?: (value: unknown) => string;
+  deserialize?: (value: string) => unknown;
 }
 
 export const persist = (
@@ -86,18 +91,18 @@ export const persist = (
   } = finalConfig;
 
   return {
-    onRead: (atom, value) => {
+    onRead: <T>(atom: Atom<T>, value: T): T => {
       try {
         const stored = storage.getItem(key);
         if (stored !== null) {
-          return deserialize(stored);
+          return deserialize(stored) as T;
         }
       } catch (error) {
         console.error('Error reading persisted state:', error);
       }
       return value;
     },
-    onWrite: (atom, value, next) => {
+    onWrite: <T>(atom: Atom<T>, value: T, next: (value: T) => void) => {
       next(value);
       try {
         storage.setItem(key, serialize(value));
@@ -110,9 +115,9 @@ export const persist = (
 
 // Thunk middleware (similar to redux-thunk)
 export const thunk: AtomMiddleware = {
-  onWrite: (atom, value, next) => {
+  onWrite: <T>(atom: Atom<T>, value: T | ((next: (value: T) => void, getAtom: () => Atom<T>) => void), next: (value: T) => void) => {
     if (typeof value === 'function') {
-      return value(next, () => atom);
+      return (value as ((next: (value: T) => void, getAtom: () => Atom<T>) => void))(next, () => atom);
     }
     return next(value);
   },
@@ -120,7 +125,7 @@ export const thunk: AtomMiddleware = {
 
 // Batch middleware for optimizing updates
 export const batch: AtomMiddleware = {
-  onWrite: (atom, value, next) => {
+  onWrite: <T>(atom: Atom<T>, value: T | T[], next: (value: T) => void) => {
     if (!Array.isArray(value)) {
       return next(value);
     }
@@ -136,8 +141,8 @@ export function createValidator<T>(
   validate: (value: T) => boolean | string | Error
 ): AtomMiddleware {
   return {
-    onWrite: (atom, value, next) => {
-      const result = validate(value);
+    onWrite: <U>(atom: Atom<U>, value: U, next: (value: U) => void) => {
+      const result = validate(value as unknown as T);
       if (result === true || result === undefined) {
         next(value);
       } else {
@@ -151,27 +156,27 @@ export function createValidator<T>(
 }
 
 // Computed values middleware (memoization)
-export const computed = (
-  compute: (...args: any[]) => any,
-  deps: Atom<any>[]
+export const computed = <T>(
+  compute: (...args: unknown[]) => T,
+  deps: Atom<unknown>[]
 ): AtomMiddleware => {
-  let lastResult: any;
-  let lastDeps: any[] = [];
+  let lastResult: T;
+  let lastDeps: unknown[] = [];
 
   return {
-    onRead: (atom, value) => {
+    onRead: <U>(): U => {
       const currentDeps = deps.map(dep => dep);
       
       if (
         lastDeps.length === currentDeps.length &&
         lastDeps.every((dep, i) => dep === currentDeps[i])
       ) {
-        return lastResult;
+        return lastResult as unknown as U;
       }
 
       lastDeps = currentDeps;
       lastResult = compute(...currentDeps);
-      return lastResult;
+      return lastResult as unknown as U;
     },
   };
 }; 

@@ -1,39 +1,34 @@
 // Core functionality
-export { createAtom, createDerivedAtom, useAtom, useAtomSelector, useBatchUpdates, createStore } from './store';
-export type { Atom, WritableAtom } from './store';
+
+
+// Atom creation and hooks
+export { createAtom, createDerivedAtom, useAtom } from './atoms';
 
 // Actions and Redux-like functionality
 export {
   createReducerAtom,
   createSelector,
-  createActionCreator,
   createAsyncAction,
+  createActionCreator,
   createAsyncAtom,
 } from './actions';
 export type { Action, ActionCreator, Reducer, AsyncState } from './actions';
 
 // Middleware
 export {
+  adaptReduxMiddleware,
   devTools,
   persist,
-  logger,
-  thunk,
-  batch,
-  computed,
   createValidator,
-  adaptReduxMiddleware,
+  computed,
 } from './middleware';
-export type { AtomMiddleware, DevToolsConfig, ReduxMiddleware } from './middleware';
-
-// Error handling
-export { AtomikError, AtomNotFoundError, CircularDependencyError, InvalidAtomUpdateError } from './errors';
+export type { ReduxMiddleware, DevToolsConfig } from './middleware';
 
 // Performance monitoring
 export { getAtomMetrics, resetMetrics } from './performance';
-export type { PerformanceMetrics } from './performance';
 
 // Cache system
 export { computationCache } from './cache';
 
-// DevTools
-export { createDevTools, createDevToolsAction } from './devtools';
+// Singleton store instance
+export { store } from './store.instance';

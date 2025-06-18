@@ -1,4 +1,4 @@
-import { Atom } from './store';
+import { Atom } from "./store";
 
 interface CacheEntry<T> {
   value: T;
@@ -8,7 +8,7 @@ interface CacheEntry<T> {
 }
 
 class ComputationCache {
-  private cache = new Map<symbol, CacheEntry<any>>();
+  private cache = new Map<symbol, CacheEntry<unknown>>();
   private maxCacheSize = 1000;
   private maxCacheAge = 5 * 60 * 1000; // 5 minutes
   private gcInterval = 60 * 1000; // 1 minute
@@ -24,7 +24,7 @@ class ComputationCache {
     if (entry) {
       entry.lastComputed = Date.now();
     }
-    return entry;
+    return entry as CacheEntry<T> | undefined;
   }
 
   public set<T>(
